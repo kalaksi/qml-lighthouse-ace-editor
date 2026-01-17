@@ -29,6 +29,7 @@ Item {
     WebEngineView {
         id: webView
         anchors.fill: parent
+        backgroundColor: "#1d1f21"
 
         webChannel: channel
 
