@@ -12,7 +12,7 @@ cd qml-lighthouse-ace-editor
 # Or if you have already repo cloned:
 # git submodule update --init --recursive
 
-# To include only necessary files:
+# One way to include only necessary files:
 cd Lighthouse/AceEditor/ace-builds
 git sparse-checkout init --no-cone
 git sparse-checkout set /LICENSE src-min-noconflict
