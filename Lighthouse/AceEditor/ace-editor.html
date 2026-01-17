@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ace Editor</title>
+    <style type="text/css" media="screen">
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: transparent;
+        }
+        #editor {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+    </style>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        var editor = null;
+        var bridge = null;
+        var aceLoaded = false;
+        var webChannelReady = false;
+
+        var pendingContent = null;
+        var pendingMode = "text";
+        var pendingTheme = "ace/theme/tomorrow_night";
+        var pendingFontSize = 14;
+
+        // Configuration: paths to try loading ace.js from (in order)
+        var acePaths = [
+            'ace-builds/src-min-noconflict/ace.js',  // Submodule path (most common)
+            '../ace-builds/src-min-noconflict/ace.js',  // Alternative submodule location
+            '../../ace-builds/src-min-noconflict/ace.js'  // Another alternative
+        ];
+
+        function initializeAce() {
+            if (typeof ace === 'undefined' || !aceLoaded) {
+                return;
+            }
+            
+            if (window.editor) {
+                return;
+            }
+            
+            window.editor = ace.edit("editor");
+            window.editor.setTheme(pendingTheme);
+            window.editor.session.setMode("ace/mode/" + pendingMode);
+            window.editor.setOptions({
+                fontSize: pendingFontSize,
+                showPrintMargin: false,
+                wrap: true
+            });
+
+            if (pendingContent !== null) {
+                window.editor.setValue(pendingContent);
+                window.editor.clearSelection();
+            }
+
+            window.editor.session.on('change', function() {
+                if (window.bridge) {
+                    window.bridge.contentChanged(window.editor.getValue());
+                }
+            });
+        }
+
+        function tryInitialize() {
+            if (aceLoaded && (webChannelReady || typeof qt === 'undefined')) {
+                initializeAce();
+            }
+        }
+
+        // Expose function to set initial content from QML
+        window.setAceContent = function(content, mode, theme, fontSize) {
+            pendingContent = content || "";
+            pendingMode = mode || "text";
+            pendingTheme = theme || "ace/theme/tomorrow_night";
+            pendingFontSize = fontSize || 14;
+            if (window.editor) {
+                window.editor.setValue(pendingContent);
+                window.editor.session.setMode("ace/mode/" + pendingMode);
+                if (pendingTheme) {
+                    window.editor.setTheme(pendingTheme);
+                }
+                if (pendingFontSize) {
+                    window.editor.setOptions({ fontSize: pendingFontSize });
+                }
+                window.editor.clearSelection();
+            }
+        };
+
+        // Load ace.js - try multiple paths
+        function tryLoadAce(pathIndex) {
+            if (pathIndex >= acePaths.length) {
+                console.error('Failed to load Ace editor from all configured paths');
+                return;
+            }
+
+            var aceScript = document.createElement('script');
+            aceScript.type = 'text/javascript';
+            aceScript.charset = 'utf-8';
+            aceScript.src = acePaths[pathIndex];
+            
+            aceScript.onload = function() {
+                aceLoaded = true;
+                // Configure base path for ace to find modes and themes
+                if (typeof ace !== 'undefined' && ace.config) {
+                    var basePath = acePaths[pathIndex].replace('/ace.js', '');
+                    ace.config.set('basePath', basePath);
+                }
+                tryInitialize();
+            };
+            
+            aceScript.onerror = function() {
+                // Try next path
+                tryLoadAce(pathIndex + 1);
+            };
+            
+            document.head.appendChild(aceScript);
+        }
+
+        // Start loading ace.js
+        tryLoadAce(0);
+
+        // Setup WebChannel
+        if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                bridge = channel.objects.bridge;
+                window.bridge = bridge;
+                webChannelReady = true;
+                tryInitialize();
+            });
+        } else {
+            webChannelReady = true;
+            tryInitialize();
+        }
+    </script>
+</head>
+<body>
+    <div id="editor"></div>
+</body>
+</html>
