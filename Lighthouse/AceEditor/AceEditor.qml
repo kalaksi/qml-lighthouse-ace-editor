@@ -8,9 +8,25 @@ Item {
 
     property string content: ""
     property string mode: "text"
-    property alias editor: webView
+    property string theme: ""
+    property color defaultBackgroundColor: "transparent"
+    property bool _editorReady: false
 
     signal editorContentChanged(string newContent)
+    signal editorReady()
+
+    onContentChanged: {
+        root.setContent(root.content)
+    }
+
+    onModeChanged: {
+        root.setMode(root.mode)
+    }
+
+    onThemeChanged: {
+        root.setTheme(root.theme)
+    }
+
 
     WebChannel {
         id: channel
@@ -24,82 +40,122 @@ Item {
         function contentChanged(content) {
             root.editorContentChanged(content)
         }
+
+        function editorReady() {
+            // console.log("Editor is now ready");
+            root._editorReady = true;
+
+            root.setMode(root.mode)
+            root.setTheme(root.theme)
+            root.setContent(root.content)
+
+            root.editorReady()
+        }
     }
 
     WebEngineView {
         id: webView
         anchors.fill: parent
-        backgroundColor: "#1d1f21"
-
+        backgroundColor: root.defaultBackgroundColor
         webChannel: channel
-
         url: Qt.resolvedUrl("ace-editor.html")
+    }
 
-        onLoadingChanged: function(loadRequest) {
-            if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                Qt.callLater(function() {
-                    webView.runJavaScript(`
-                        (function() {
-                            if (typeof window.setAceContent === 'function') {
-                                window.setAceContent(${JSON.stringify(root.content)}, ${JSON.stringify(root.mode)});
-                            } else if (window.editor && typeof window.editor.setValue === 'function') {
-                                window.editor.setValue(${JSON.stringify(root.content)});
-                                window.editor.clearSelection();
-                                window.editor.session.setMode("ace/mode/${root.mode}");
-                            }
-                        })();
-                    `)
-                })
-            }
+    function setContent(content) {
+        if (!root._editorReady) {
+            return
         }
 
-        function setContent(content) {
-            if (webView.loading === WebEngineView.LoadSucceededStatus) {
-                webView.runJavaScript(`
-                    (function() {
-                        if (window.editor) {
-                            window.editor.setValue(${JSON.stringify(content)});
-                            window.editor.clearSelection();
-                        }
-                    })();
-                `)
-            }
+        webView.runJavaScript(`
+            window.editor.setValue(${JSON.stringify(content)});
+            window.editor.clearSelection();
+        `)
+    }
+
+    function getContent(callback) {
+        if (!root._editorReady) {
+            return
         }
 
-        function getContent(callback) {
-            webView.runJavaScript(`
-                (function() {
-                    return window.editor ? window.editor.getValue() : "";
-                })();
-            `, function(result) {
+        webView.runJavaScript(
+            `(function() { return window.editor ? window.editor.getValue() : ""; })();`,
+            function(result) {
                 if (callback) {
                     callback(result)
                 }
-            })
-        }
-
-        function setMode(mode) {
-            if (webView.loading === WebEngineView.LoadSucceededStatus) {
-                webView.runJavaScript(`
-                    (function() {
-                        if (window.editor) {
-                            window.editor.session.setMode("ace/mode/${mode}");
-                        }
-                    })();
-                `)
             }
-        }
+        )
     }
 
-    onContentChanged: {
-        if (webView.loading === WebEngineView.LoadSucceededStatus) {
-            webView.setContent(root.content)
+    function setMode(mode) {
+        if (!root._editorReady || !mode) {
+            return
         }
+
+        webView.runJavaScript(`window.editor.session.setMode("ace/mode/${mode}");`)
     }
 
-    onModeChanged: {
-        if (webView.loading === WebEngineView.LoadSucceededStatus) {
-            webView.setMode(root.mode)
+    function setTheme(theme) {
+        if (!root._editorReady || !theme) {
+            return
         }
+
+        webView.runJavaScript(`window.editor.setTheme("ace/theme/${theme}");`)
+    }
+
+    /// Set Ace Editor options.
+    function setEditorOption(optionName, value) {
+        if (!root._editorReady) {
+            return
+        }
+
+        let optionNameString = JSON.stringify(optionName)
+        let valueString = JSON.stringify(value)
+        webView.runJavaScript(`window.editor.setOption(${optionNameString}, ${valueString});`)
+    }
+
+    function getEditorOption(optionName) {
+        if (!root._editorReady) {
+            return
+        }
+
+        let optionNameString = JSON.stringify(optionName)
+        webView.runJavaScript(`return window.editor.getOption(${optionNameString});`)
+    }
+
+    function callEditorFunction(functionName, ...args) {
+        if (!root._editorReady) {
+            return
+        }
+
+        let argsString = args.map(arg => JSON.stringify(arg)).join(", ")
+
+        webView.runJavaScript(`
+            if (typeof window.editor.${functionName} === 'function') {
+                window.editor.${functionName}(${argsString});
+            }
+            else {
+                throw new Error("Editor function '${functionName}' not found");
+            }
+        `)
+    }
+
+    function setRendererOption(optionName, value) {
+        if (!root._editorReady) {
+            return
+        }
+
+        let optionNameString = JSON.stringify(optionName)
+        let valueString = JSON.stringify(value)
+        webView.runJavaScript(`window.editor.renderer.setOption(${optionNameString}, ${valueString});`)
+    }
+
+    function getRendererOption(optionName) {
+        if (!root._editorReady) {
+            return
+        }
+
+        let optionNameString = JSON.stringify(optionName)
+        webView.runJavaScript(`return window.editor.renderer.getOption(${optionNameString});`)
     }
 }
